@@ -1,3 +1,4 @@
+import time
 from typing import List, Union
 from torch.utils.data import DataLoader
 from datasets import Dataset as HFDataset
@@ -5,6 +6,8 @@ from transformers import Trainer, TrainingArguments
 from types import MethodType
 import copy
 import torch
+
+from CSVLogger import log_global_metrics, ClientCSVLoggerCallback, save_total_time, save_metrics
 from utils import compute_metrics
 import os # Imported but not explicitly used in the provided snippet. Keep for potential future use.
 
@@ -71,7 +74,8 @@ def federated_train(
         global_rounds: int = 3,
         batch_size: int = 32,
         learning_rate: float = 5e-5,
-        device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
+        run_name: str = None
 ):
     """
     Implements a federated learning training loop.
@@ -93,6 +97,11 @@ def federated_train(
     Returns:
         torch.nn.Module: The final global model after all federated rounds.
     """
+    client_log_path = f"results/{run_name}/client_training_log.csv"
+    global_log_path = f"results/{run_name}/global_eval_log.csv"
+    final_log_path = f"results/{run_name}/final_logs.txt"
+    os.makedirs(f"results/{run_name}", exist_ok=True)
+    total_start_time = time.time()
     num_clients = len(client_datasets)
 
 
@@ -127,6 +136,7 @@ def federated_train(
         )
         metrics = evaluator.evaluate()
         print(f" Global Evaluation (Round {round_idx + 1}): {metrics}")
+        log_global_metrics(round_num=round_idx + 1, metrics=metrics, csv_path=global_log_path)
 
         # === Train on each client ===
         client_models = []
@@ -139,7 +149,7 @@ def federated_train(
             # Define training arguments for the client
             # Ensure unique output_dir for each client and round
             training_args = TrainingArguments(
-                output_dir=f"./results/client_{client_idx}_round_{round_idx}",
+                # output_dir=f"./results/client_{client_idx}_round_{round_idx}",
                 num_train_epochs=local_epochs,
                 per_device_train_batch_size=batch_size,
                 per_device_eval_batch_size=batch_size, # For evaluation during client training
@@ -152,6 +162,12 @@ def federated_train(
                 load_best_model_at_end=False, # We don't need to load the best model as we aggregate
             )
 
+            logger_cb = ClientCSVLoggerCallback(
+                csv_path=client_log_path,
+                round_num=round_idx + 1,
+                client_id=client_idx + 1
+            )
+
             # Initialize Trainer based on whether client_data is a DataLoader or HFDataset
             if isinstance(client_data, DataLoader):
                 trainer = Trainer(
@@ -160,6 +176,7 @@ def federated_train(
                     # eval_dataset can be None or val_ds based on need for client-side validation
                     eval_dataset=val_ds,
                     compute_metrics=compute_metrics,
+                    callbacks=[logger_cb],
                 )
                 # Override get_train_dataloader for DataLoader input
                 trainer.get_train_dataloader = MethodType(lambda self: client_data, trainer)
@@ -170,6 +187,7 @@ def federated_train(
                     train_dataset=client_data,
                     eval_dataset=val_ds,
                     compute_metrics=compute_metrics,
+                    callbacks=[logger_cb],
                 )
 
             # Perform local training for the client
@@ -193,5 +211,10 @@ def federated_train(
     )
     final_metrics = final_trainer.evaluate()
     print(f" Final Test Metrics: {final_metrics}")
+
+    total_time = time.time() - total_start_time
+    print(f"Total time for {global_rounds} rounds: {total_time:.2f} seconds")
+    save_total_time(total_time, final_log_path)
+    save_metrics(final_metrics, final_log_path)
 
     return global_model
