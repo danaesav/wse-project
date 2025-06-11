@@ -1,0 +1,2 @@
+Final metrics on test set: 
+ {'eval_loss': 0.7970091700553894, 'eval_model_preparation_time': 0.001, 'eval_accuracy': 0.7183333333333334, 'eval_f1': 0.7126782249556352, 'eval_runtime': 4.6754, 'eval_samples_per_second': 641.652, 'eval_steps_per_second': 20.105} 

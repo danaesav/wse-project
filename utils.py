@@ -102,7 +102,7 @@ def plot_df_language_distribution(df: pd.DataFrame, all_languages: list[str], ti
     plt.yticks(fontsize=12)
     plt.tight_layout()
     # plt.savefig('distr_original')
-    plt.show()
+    # plt.show()
 
 
 def plot_language_distribution(dataframes: list[pd.DataFrame], all_languages: list[str]):
@@ -162,7 +162,7 @@ def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_langu
 
     # Save and show
     plt.savefig(f"distr_{int(beta * 10)}.png", bbox_inches='tight')
-    plt.show()
+    # plt.show()
 
 # -------- Splitting ---------------
 def get_indexes_per_language(df: pd.DataFrame):
