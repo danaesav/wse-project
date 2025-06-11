@@ -7,7 +7,8 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import accuracy_score, f1_score
 from typing import List
 import seaborn as sns
-
+import matplotlib
+matplotlib.use('Agg')
 
 def compute_metrics(p):
     preds = np.argmax(p.predictions, axis=1)
@@ -87,23 +88,81 @@ def plot_df_language_distribution(df: pd.DataFrame, all_languages: list[str], ti
     language_counts = language_counts.sort_values('language')
 
     plt.figure(figsize=(8, 4))
+    max_count = language_counts['count'].max()
     sns.barplot(data=language_counts, x='language', y='count', hue='language', palette='viridis', legend=False)
 
     for i, row in enumerate(language_counts.itertuples()):
-        plt.text(i, row.count, str(row.count), ha='center', va='bottom', fontsize=9)
+        plt.text(i, row.count + max_count * 0.03, str(row.count), ha='center', va='bottom', fontsize=14)
+    plt.ylim(0, max_count * 1.13)
 
-    plt.title(title, fontsize=14)
-    plt.xlabel("Language", fontsize=12)
-    plt.ylabel("Samples", fontsize=12)
-    plt.xticks(ha='right', fontsize=10)
-    plt.yticks(fontsize=10)
+    plt.title(title, fontsize=16)
+    plt.xlabel("Language", fontsize=14)
+    plt.ylabel("Samples", fontsize=14)
+    plt.xticks(ha='right', fontsize=14)
+    plt.yticks(fontsize=12)
     plt.tight_layout()
+    # plt.savefig('distr_original')
     plt.show()
 
 
 def plot_language_distribution(dataframes: list[pd.DataFrame], all_languages: list[str]):
     for client_id, client_df in enumerate(dataframes):
         plot_df_language_distribution(client_df, all_languages, "Client: " + str(client_id + 1))
+
+def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_languages: list[str], beta, title="Language Distribution Among Clients (beta="):
+    all_languages_sorted = sorted(all_languages)
+    num_clients = len(dataframes)
+
+    # Determine grid size
+    rows = int(num_clients ** 0.5)
+    cols = (num_clients + rows - 1) // rows  # Ceiling division
+
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 6, rows * 5), squeeze=False)
+
+    # GLOBAL TITLE
+    global_title = f"{title}{beta})"
+    fig.suptitle(global_title, fontsize=20, y=1.05, fontweight='bold')
+
+    for client_id, (client_df, ax) in enumerate(zip(dataframes, axes.flatten())):
+        # Prepare data
+        client_df['language'] = pd.Categorical(client_df['language'],
+                                               categories=all_languages_sorted,
+                                               ordered=True)
+
+        counts_series = client_df['language'].value_counts(dropna=False)
+        full_counts_series = counts_series.reindex(all_languages_sorted, fill_value=0)
+        language_counts = full_counts_series.reset_index()
+        language_counts.columns = ['language', 'count']
+
+        max_count = language_counts['count'].max()
+
+        # Plot
+        sns.barplot(data=language_counts, x='language', y='count',
+                    hue='language', palette='viridis', legend=False, ax=ax)
+
+        # Count labels
+        for i, row in enumerate(language_counts.itertuples()):
+            ax.text(i, row.count + max_count * 0.03, str(row.count), ha='center', va='bottom', fontsize=14)
+
+        # Styling
+        ax.set_ylim(0, max_count * 1.15)
+        ax.set_title(f"Client {client_id + 1}", fontsize=20, fontweight='bold')
+        ax.set_xlabel("Language", fontsize=18)
+        ax.set_ylabel("Samples", fontsize=18)
+        ax.tick_params(axis='x', rotation=45, labelsize=16)
+        ax.tick_params(axis='y', labelsize=16)
+        ax.grid(True, axis='y', linestyle='--', alpha=0.6)
+
+    # Turn off any extra subplots
+    for i in range(num_clients, rows * cols):
+        fig.delaxes(axes.flatten()[i])
+
+    # Adjust layout to prevent overlap
+    plt.subplots_adjust(top=0.95, hspace=0.4, wspace=0.3)
+
+    # Save and show
+    plt.savefig(f"distr_{int(beta * 10)}.png", bbox_inches='tight')
+    plt.show()
 
 # -------- Splitting ---------------
 def get_indexes_per_language(df: pd.DataFrame):
