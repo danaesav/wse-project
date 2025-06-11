@@ -8,7 +8,9 @@ from sklearn.metrics import accuracy_score, f1_score
 from typing import List
 import seaborn as sns
 import matplotlib
+from enum import Enum
 matplotlib.use('Agg')
+
 
 def compute_metrics(p):
     preds = np.argmax(p.predictions, axis=1)
@@ -17,7 +19,6 @@ def compute_metrics(p):
         "accuracy": accuracy_score(labels, preds),
         "f1": f1_score(labels, preds, average="weighted")
     }
-
 
 
 def compute_discrepancy_aware_weights(
@@ -42,19 +43,18 @@ def compute_discrepancy_aware_weights(
     """
 
     def compute_discrepancy(label_counts):
-        total = sum(label_counts)
-        if total == 0:
+        if sum(label_counts) == 0:
             return 0.0
-        Dk = np.array(label_counts) / total
-        Tc = np.full(num_classes, 1.0 / num_classes)
+        dk = np.array(label_counts) / sum(label_counts)
+        tc = np.full(num_classes, 1.0 / num_classes)
 
         if metric == "l2":
-            return np.linalg.norm(Dk - Tc)
+            return np.linalg.norm(dk - tc)
         elif metric == "kl":
             eps = 1e-10
-            Dk_safe = Dk + eps
-            Tc_safe = Tc + eps
-            return np.sum(Dk_safe * np.log(Dk_safe / Tc_safe))
+            dk_safe = dk + eps
+            tc_safe = tc + eps
+            return np.sum(dk_safe * np.log(dk_safe / tc_safe))
         else:
             raise ValueError("Unsupported metric: choose 'l2' or 'kl'.")
 
@@ -109,7 +109,9 @@ def plot_language_distribution(dataframes: list[pd.DataFrame], all_languages: li
     for client_id, client_df in enumerate(dataframes):
         plot_df_language_distribution(client_df, all_languages, "Client: " + str(client_id + 1))
 
-def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_languages: list[str], beta, title="Language Distribution Among Clients (beta="):
+
+def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_languages: list[str], beta,
+                                       title="Language Distribution Among Clients (beta="):
     all_languages_sorted = sorted(all_languages)
     num_clients = len(dataframes)
 
@@ -164,6 +166,7 @@ def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_langu
     plt.savefig(f"distr_{int(beta * 10)}.png", bbox_inches='tight')
     # plt.show()
 
+
 # -------- Splitting ---------------
 def get_indexes_per_language(df: pd.DataFrame):
     lang_to_indices = defaultdict(list)
@@ -171,11 +174,13 @@ def get_indexes_per_language(df: pd.DataFrame):
         lang_to_indices[lang].extend(group.index.tolist())
     return lang_to_indices
 
+
 def uniform_split(df: pd.DataFrame, lang_to_indices, num_clients=4, seed: int = 42):
     client_indices = [[] for _ in range(num_clients)]
+    client_language_distribution_counts = [[0 for _ in lang_to_indices] for _ in range(num_clients)]
     np.random.seed(seed)
 
-    for label, indices in lang_to_indices.items():
+    for lang_idx, (label, indices) in enumerate(lang_to_indices.items()):
         np.random.shuffle(indices)
         split_sizes = [len(indices) // num_clients] * num_clients
         for i in range(len(indices) % num_clients):
@@ -184,38 +189,43 @@ def uniform_split(df: pd.DataFrame, lang_to_indices, num_clients=4, seed: int = 
         start = 0
         for client_id, size in enumerate(split_sizes):
             end = start + size
-            client_indices[client_id].extend(indices[start:end])
+            assigned_indices = indices[start:end]
+            client_indices[client_id].extend(assigned_indices)
+            client_language_distribution_counts[client_id][lang_idx] += len(assigned_indices)
             start = end
 
     datasets = [df.loc[sorted(indices)] for indices in client_indices]
-    return datasets
+    return datasets, client_language_distribution_counts
 
 
 def dirichlet_split(df: pd.DataFrame, lang_to_indices, beta: float, num_clients: int = 4, seed: int = None):
     rng = np.random.default_rng(seed)
     client_selected_indices = [[] for _ in range(num_clients)]
+    client_language_distribution_counts = [[0 for _ in lang_to_indices] for _ in range(num_clients)]
 
-    for label, indices in lang_to_indices.items():
+    for lang_idx, (label, indices) in enumerate(lang_to_indices.items()):
         shuffled_label_indices = rng.permutation(indices)
         proportions = rng.dirichlet([beta] * num_clients)
         proportions = (proportions * len(indices)).astype(int)
 
+        # Fix rounding issues to ensure total count matches
         diff = len(indices) - np.sum(proportions)
         for i in range(diff):
             proportions[i % num_clients] += 1
 
         current_idx_pos = 0
         for client_id, count in enumerate(proportions):
-            selected_for_client = shuffled_label_indices[current_idx_pos : current_idx_pos + count]
+            selected_for_client = shuffled_label_indices[current_idx_pos: current_idx_pos + count]
             client_selected_indices[client_id].extend(selected_for_client)
+            client_language_distribution_counts[client_id][lang_idx] += count
             current_idx_pos += count
 
     datasets = [df.loc[sorted(idx_list)] for idx_list in client_selected_indices]
-    return datasets
+    return datasets, client_language_distribution_counts
 
 
 # -------- LABELING
-def label(df):
+def label_df(df):
     # Map stars to 0/1/2
     def map_sentiment(stars):
         if stars <= 2:
@@ -229,12 +239,10 @@ def label(df):
 
 
 # ---------- Calculating weights
-from utils import compute_discrepancy_aware_weights
-from enum import Enum
-
 class FedAlgo(Enum):
     FedAvg = 1
     FedDisco = 2
+
 
 def get_client_weights(client_datasets: list[Dataset], fed_algo: FedAlgo,
                        language_counts: list[list[int]] = None, **kwargs):
@@ -243,20 +251,23 @@ def get_client_weights(client_datasets: list[Dataset], fed_algo: FedAlgo,
         assert total_size > 0
         return [len(dataset) / total_size for dataset in client_datasets]
     elif fed_algo == FedAlgo.FedDisco:
-        raise NotImplementedError("FedDisco not implemented yet")
-        # num_classes = kwargs.get('num_classes')
-        # a = kwargs.get('a', 1.0)
-        # b = kwargs.get('b', 0.0)
-        # metric = kwargs.get('metric', 'l2')
-        #
-        # if num_classes is None:
-        #     raise ValueError("num_classes must be provided for FedDisco.")
-        #
-        # return compute_discrepancy_aware_weights(
-        #     client_language_distribution_counts=client_language_distribution_counts,
-        #     num_classes=num_classes,
-        #     a=a,
-        #     b=b,
-        #     metric=metric
-        # )
-        # compute_discrepancy_aware_weights()
+        if language_counts is None:
+            raise ValueError("language_counts must be provided for FedDisco.")
+
+        for i in range(1, len(client_datasets)):
+            assert len(language_counts[i]) == len(language_counts[i-1]), "language_counts must have same length"
+
+        num_classes = len(language_counts[0])
+        a = kwargs.get("a", 1.0)
+        b = kwargs.get("b", 0.0)
+        metric = kwargs.get("metric", "l2")
+
+        return compute_discrepancy_aware_weights(
+            client_language_distribution_counts=language_counts,
+            num_classes=num_classes,
+            a=a,
+            b=b,
+            metric=metric
+        )
+    else:
+        raise ValueError("FedAlgo must be either FedAvg or FedDisco.")

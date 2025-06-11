@@ -9,7 +9,7 @@ import torch
 
 from CSVLogger import log_global_metrics, ClientCSVLoggerCallback, save_total_time, save_metrics
 from utils import compute_metrics
-import os # Imported but not explicitly used in the provided snippet. Keep for potential future use.
+import os  # Imported but not explicitly used in the provided snippet. Keep for potential future use.
 
 # Assuming compute_metrics is available from utils.py
 # Example placeholder if utils.py is not provided:
@@ -21,7 +21,8 @@ import os # Imported but not explicitly used in the provided snippet. Keep for p
 #         labels = p.label_ids.cpu().numpy()
 #     else:
 #         labels = p.label_ids
-#     precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average='binary') # or 'weighted' based on task
+#     precision, recall, f1, _ = precision_recall_fscore_support(labels,
+#                                                                preds, average='binary') # or 'weighted' based on task
 #     acc = accuracy_score(labels, preds)
 #     return {'accuracy': acc, 'f1': f1, 'precision': precision, 'recall': recall}
 
@@ -92,7 +93,9 @@ def federated_train(
         local_epochs (int, optional): Number of local epochs for each client. Defaults to 1.
         global_rounds (int, optional): Number of global aggregation rounds. Defaults to 3.
         batch_size (int, optional): Batch size for training and evaluation. Defaults to 32.
+        learning_rate (float, optional): The learning rate for the optimizer. Defaults to 5e-5.
         device (str, optional): Device to run training on ('cuda' or 'cpu'). Defaults to 'cuda' if available.
+        run_name: str: Name of the run. Used for logging and creating a path. Defaults to None.
 
     Returns:
         torch.nn.Module: The final global model after all federated rounds.
@@ -103,7 +106,6 @@ def federated_train(
     os.makedirs(f"results/{run_name}", exist_ok=True)
     total_start_time = time.time()
     num_clients = len(client_datasets)
-
 
     # Assertions for client weights
     assert len(client_weights) == num_clients, "Mismatch between client_weights and number of clients"
@@ -120,7 +122,7 @@ def federated_train(
         logging_strategy="no",
         save_strategy="no",
         disable_tqdm=True,  # Disable progress bar for cleaner output
-        report_to="none", # Do not report to any logging service
+        report_to="none",  # Do not report to any logging service
     )
 
     for round_idx in range(global_rounds):
@@ -131,7 +133,7 @@ def federated_train(
         evaluator = Trainer(
             model=global_model,  # Use the current global model for evaluation
             args=evaluation_args,
-            eval_dataset=test_ds, # Evaluate on the test dataset
+            eval_dataset=test_ds,  # Evaluate on the test dataset
             compute_metrics=compute_metrics,
         )
         metrics = evaluator.evaluate()
@@ -152,14 +154,14 @@ def federated_train(
                 # output_dir=f"./results/client_{client_idx}_round_{round_idx}",
                 num_train_epochs=local_epochs,
                 per_device_train_batch_size=batch_size,
-                per_device_eval_batch_size=batch_size, # For evaluation during client training
-                logging_strategy="epoch", # Log metrics at the end of each epoch
-                save_strategy="no", # Do not save client models
+                per_device_eval_batch_size=batch_size,  # For evaluation during client training
+                logging_strategy="epoch",  # Log metrics at the end of each epoch
+                save_strategy="no",  # Do not save client models
                 learning_rate=learning_rate,
                 weight_decay=0.01,
                 disable_tqdm=True,
                 report_to="none",
-                load_best_model_at_end=False, # We don't need to load the best model as we aggregate
+                load_best_model_at_end=False,  # We don't need to load the best model as we aggregate
             )
 
             logger_cb = ClientCSVLoggerCallback(
@@ -180,7 +182,7 @@ def federated_train(
                 )
                 # Override get_train_dataloader for DataLoader input
                 trainer.get_train_dataloader = MethodType(lambda self: client_data, trainer)
-            else: # Assuming it's an HFDataset
+            else:  # Assuming it's an HFDataset
                 trainer = Trainer(
                     model=client_model,
                     args=training_args,
@@ -204,8 +206,8 @@ def federated_train(
     # === Final Evaluation after all rounds ===
     print("\n--- Final Evaluation on Test Set ---")
     final_trainer = Trainer(
-        model=global_model.to(device), # Ensure global model is on the correct device for final eval
-        args=evaluation_args, # Reuse evaluation arguments
+        model=global_model.to(device),  # Ensure global model is on the correct device for final eval
+        args=evaluation_args,  # Reuse evaluation arguments
         eval_dataset=test_ds,
         compute_metrics=compute_metrics,
     )

@@ -1,18 +1,21 @@
 import os
 import pandas as pd
 import matplotlib
+import matplotlib.pyplot as plt
+
+from utils import dirichlet_split, plot_df_language_distribution, plot_language_distribution_compact, \
+    get_indexes_per_language
+
 # Set the backend first (important!)
 matplotlib.use('Agg')  # Non-interactive backend that always works
-import matplotlib.pyplot as plt
-from transformers import AutoTokenizer
 
 root_dir = 'results'
 
 name_mapping = {
-    'FedAvg_b01' : 'FedAvg (b=0.1)',
-    'FedAvg_b05' : 'FedAvg (b=0.5)',
-    'FedAvg_b09' : 'FedAvg (b=0.9)',
-    'FedAvg_uniform' : 'FedAvg (uniform)',
+    'FedAvg_b01': 'FedAvg (b=0.1)',
+    'FedAvg_b05': 'FedAvg (b=0.5)',
+    'FedAvg_b09': 'FedAvg (b=0.9)',
+    'FedAvg_uniform': 'FedAvg (uniform)',
 }
 
 plt.figure(figsize=(10, 6))
@@ -51,14 +54,11 @@ plt.figure(figsize=(10, 6))
 # ]]
 
 # print(summary_df)
-from utils import dirichlet_split, plot_df_language_distribution, plot_language_distribution_compact, \
-    get_indexes_per_language
 
 
-def get_client_datasets(beta):
+def get_client_datasets(beta, data_dir: str = "data"):
     portion = 0.1
-    DATA_DIR = "data"
-    train_df = pd.read_csv(os.path.join(DATA_DIR, "train.csv")).sample(frac=portion, random_state=42)
+    train_df = pd.read_csv(os.path.join(data_dir, "train.csv")).sample(frac=portion, random_state=42)
 
     lang_to_indices = get_indexes_per_language(train_df)
     languages = list(train_df.language.unique())
@@ -66,6 +66,7 @@ def get_client_datasets(beta):
     client_dfs = dirichlet_split(train_df, lang_to_indices, beta=beta, seed=42)
     plot_df_language_distribution(train_df, languages, "Total Distribution (Before client splitting)")
     plot_language_distribution_compact(client_dfs, languages, beta)
+
 
 get_client_datasets(0.1)
 
