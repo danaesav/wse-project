@@ -32,6 +32,7 @@ class ClientCSVLoggerCallback(TrainerCallback):
             else:
                 df.to_csv(self.csv_path, index=False)
 
+
 def log_global_metrics(round_num, metrics, csv_path):
     row = {"round": round_num}
     row.update({k: metrics[k] for k in ["eval_loss", "accuracy", "f1"] if k in metrics})
@@ -41,9 +42,11 @@ def log_global_metrics(round_num, metrics, csv_path):
     else:
         df.to_csv(csv_path, index=False)
 
+
 def save_total_time(seconds_elapsed, filepath):
     with open(filepath, 'w') as f:
         f.write(f"Total training time: {seconds_elapsed:.2f} seconds\n")
+
 
 def save_metrics(metrics, filepath):
     with open(filepath, 'w') as f:

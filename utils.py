@@ -8,7 +8,9 @@ from sklearn.metrics import accuracy_score, f1_score
 from typing import List
 import seaborn as sns
 import matplotlib
+from enum import Enum
 matplotlib.use('Agg')
+
 
 def compute_metrics(p):
     preds = np.argmax(p.predictions, axis=1)
@@ -17,7 +19,6 @@ def compute_metrics(p):
         "accuracy": accuracy_score(labels, preds),
         "f1": f1_score(labels, preds, average="weighted")
     }
-
 
 
 def compute_discrepancy_aware_weights(
@@ -42,19 +43,18 @@ def compute_discrepancy_aware_weights(
     """
 
     def compute_discrepancy(label_counts):
-        total = sum(label_counts)
-        if total == 0:
+        if sum(label_counts) == 0:
             return 0.0
-        Dk = np.array(label_counts) / total
-        Tc = np.full(num_classes, 1.0 / num_classes)
+        dk = np.array(label_counts) / sum(label_counts)
+        tc = np.full(num_classes, 1.0 / num_classes)
 
         if metric == "l2":
-            return np.linalg.norm(Dk - Tc)
+            return np.linalg.norm(dk - tc)
         elif metric == "kl":
             eps = 1e-10
-            Dk_safe = Dk + eps
-            Tc_safe = Tc + eps
-            return np.sum(Dk_safe * np.log(Dk_safe / Tc_safe))
+            dk_safe = dk + eps
+            tc_safe = tc + eps
+            return np.sum(dk_safe * np.log(dk_safe / tc_safe))
         else:
             raise ValueError("Unsupported metric: choose 'l2' or 'kl'.")
 
@@ -109,7 +109,9 @@ def plot_language_distribution(dataframes: list[pd.DataFrame], all_languages: li
     for client_id, client_df in enumerate(dataframes):
         plot_df_language_distribution(client_df, all_languages, "Client: " + str(client_id + 1))
 
-def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_languages: list[str], beta, title="Language Distribution Among Clients (beta="):
+
+def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_languages: list[str], beta,
+                                       title="Language Distribution Among Clients (beta="):
     all_languages_sorted = sorted(all_languages)
     num_clients = len(dataframes)
 
@@ -164,12 +166,14 @@ def plot_language_distribution_compact(dataframes: list[pd.DataFrame], all_langu
     plt.savefig(f"distr_{int(beta * 10)}.png", bbox_inches='tight')
     plt.show()
 
+
 # -------- Splitting ---------------
 def get_indexes_per_language(df: pd.DataFrame):
     lang_to_indices = defaultdict(list)
     for lang, group in df.groupby('language'):
         lang_to_indices[lang].extend(group.index.tolist())
     return lang_to_indices
+
 
 def uniform_split(df: pd.DataFrame, lang_to_indices, num_clients=4, seed: int = 42):
     client_indices = [[] for _ in range(num_clients)]
@@ -206,7 +210,7 @@ def dirichlet_split(df: pd.DataFrame, lang_to_indices, beta: float, num_clients:
 
         current_idx_pos = 0
         for client_id, count in enumerate(proportions):
-            selected_for_client = shuffled_label_indices[current_idx_pos : current_idx_pos + count]
+            selected_for_client = shuffled_label_indices[current_idx_pos: current_idx_pos + count]
             client_selected_indices[client_id].extend(selected_for_client)
             current_idx_pos += count
 
@@ -215,7 +219,7 @@ def dirichlet_split(df: pd.DataFrame, lang_to_indices, beta: float, num_clients:
 
 
 # -------- LABELING
-def label(df):
+def label_df(df):
     # Map stars to 0/1/2
     def map_sentiment(stars):
         if stars <= 2:
@@ -229,12 +233,10 @@ def label(df):
 
 
 # ---------- Calculating weights
-from utils import compute_discrepancy_aware_weights
-from enum import Enum
-
 class FedAlgo(Enum):
     FedAvg = 1
     FedDisco = 2
+
 
 def get_client_weights(client_datasets: list[Dataset], fed_algo: FedAlgo,
                        language_counts: list[list[int]] = None, **kwargs):
