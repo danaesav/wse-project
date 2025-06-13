@@ -52,7 +52,6 @@ def plot_combined_experiments(fed_algo: FedAlgo, results_dir="results", save=Fal
     plt.tight_layout()
     if save:
         plt.savefig(os.path.join(results_dir, f'{experiment_name.lower()}_eval_loss_plot.png'))
-        plt.savefig('results/fedavg_eval_loss_plot.png')
     else:
         plt.show()
 
@@ -86,4 +85,4 @@ def get_client_datasets(beta, data_dir: str = "data"):
 
 if __name__ == '__main__':
     # Set the backend first (important!)
-    plot_combined_experiments(FedAlgo.FedDisco, save=False)
+    plot_combined_experiments(FedAlgo.FedDisco, save=True)
