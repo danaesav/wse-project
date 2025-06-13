@@ -240,8 +240,8 @@ def label_df(df):
 
 # ---------- Calculating weights
 class FedAlgo(Enum):
-    FedAvg = 1
-    FedDisco = 2
+    FedAvg = "FedAvg"
+    FedDisco = "FedDisco"
 
 
 def get_client_weights(client_datasets: list[Dataset], fed_algo: FedAlgo,
